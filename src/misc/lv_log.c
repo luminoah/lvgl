@@ -9,6 +9,8 @@
 #include "lv_log.h"
 #if LV_USE_LOG
 
+#include "esp_log.h"
+#include "esp_app_trace.h"
 #include <stdarg.h>
 #include <string.h>
 #include "lv_printf.h"
@@ -91,6 +93,10 @@ void _lv_log_add(lv_log_level_t level, const char * file, int line, const char *
         vprintf(format, args);
         printf(" \t(in %s line #%d)\n", &file[p], line);
 #else
+        //ESP_LOGE("FOO", "[%s]\t(%" LV_PRId32 ".%03" LV_PRId32 ", +%" LV_PRId32 ")\t %s: ",
+        //       lvl_prefix[level], t / 1000, t % 1000, t - last_log_time, func);
+        esp_apptrace_vprintf(format, args);
+        esp_log_write(ESP_LOG_INFO, "foo", "\n");
         if(custom_print_cb) {
             char buf[512];
 #if LV_SPRINTF_CUSTOM

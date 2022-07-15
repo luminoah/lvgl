@@ -8,6 +8,10 @@
 /*********************
  *      INCLUDES
  *********************/
+#include "freertos/FreeRTOS.h"
+#include "freertos/queue.h"
+#include "driver/gpio.h"
+
 #include "../misc/lv_assert.h"
 #include "../hal/lv_hal_indev.h"
 #include "../core/lv_indev.h"
@@ -48,13 +52,15 @@
  *   GLOBAL FUNCTIONS
  **********************/
 
+static void configure_touch_detected_interrupt(int display_touch_interrupt_pin);
+
 /**
  * Initialize an input device driver with default values.
  * It is used to surly have known values in the fields ant not memory junk.
  * After it you can set the fields.
  * @param driver pointer to driver variable to initialize
  */
-void lv_indev_drv_init(lv_indev_drv_t * driver)
+void lv_indev_drv_init(lv_indev_drv_t * driver, int display_touch_interrupt_pin)
 {
     lv_memset_00(driver, sizeof(lv_indev_drv_t));
 
@@ -65,6 +71,10 @@ void lv_indev_drv_init(lv_indev_drv_t * driver)
     driver->long_press_repeat_time  = LV_INDEV_DEF_LONG_PRESS_REP_TIME;
     driver->gesture_limit        = LV_INDEV_DEF_GESTURE_LIMIT;
     driver->gesture_min_velocity = LV_INDEV_DEF_GESTURE_MIN_VELOCITY;
+
+    if (display_touch_interrupt_pin != -1) {
+        configure_touch_detected_interrupt(display_touch_interrupt_pin);
+    }
 }
 
 /**
@@ -157,6 +167,23 @@ lv_indev_t * lv_indev_get_next(lv_indev_t * indev)
         return _lv_ll_get_next(&LV_GC_ROOT(_lv_indev_ll), indev);
 }
 
+static QueueHandle_t touch_detected_evt_queue = NULL;
+
+static void IRAM_ATTR touch_detected_isr_handler(void* arg) {
+    uint32_t gpio_num = (uint32_t)arg;
+    xQueueSendFromISR(touch_detected_evt_queue, &gpio_num, NULL);
+}
+
+static void configure_touch_detected_interrupt(int display_touch_interrupt_pin) {
+    touch_detected_evt_queue = xQueueCreate(10, sizeof(uint32_t));
+    gpio_config_t io_conf;
+    io_conf.intr_type = GPIO_INTR_POSEDGE;
+    io_conf.mode = GPIO_MODE_INPUT;
+    io_conf.pin_bit_mask = (1ULL<<display_touch_interrupt_pin);
+    gpio_config(&io_conf);
+    gpio_isr_handler_add(display_touch_interrupt_pin, touch_detected_isr_handler, (void*)display_touch_interrupt_pin);
+}
+
 /**
  * Read data from an input device.
  * @param indev pointer to an input device
@@ -180,6 +207,12 @@ void _lv_indev_read(lv_indev_t * indev, lv_indev_data_t * data)
     else if(indev->driver->type == LV_INDEV_TYPE_ENCODER) {
         data->key = LV_KEY_ENTER;
     }
+
+    uint32_t interrupt_arg;
+    if (xQueueReceive(touch_detected_evt_queue, &interrupt_arg, 0) != pdPASS) {
+        return;
+    }
+    xQueueReset(touch_detected_evt_queue);
 
     if(indev->driver->read_cb) {
         INDEV_TRACE("calling indev_read_cb");

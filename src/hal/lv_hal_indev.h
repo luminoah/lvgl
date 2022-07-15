@@ -191,7 +191,7 @@ typedef struct _lv_indev_t {
  * After it you can set the fields.
  * @param driver pointer to driver variable to initialize
  */
-void lv_indev_drv_init(struct _lv_indev_drv_t * driver);
+void lv_indev_drv_init(struct _lv_indev_drv_t * driver, int display_touch_interrupt_pin);
 
 /**
  * Register an initialized input device driver.
